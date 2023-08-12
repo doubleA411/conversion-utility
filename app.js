@@ -3,7 +3,6 @@ const bodyParser = require("body-parser");
 const voucher_codes = require("voucher-code-generator");
 const nodemailer = require("nodemailer");
 const fs = require("fs");
-// const csv = require("csvtojson");
 let converter = require("json-2-csv");
 
 var app = express();
@@ -43,58 +42,88 @@ app.post("/webhook", bodyParser.text(), async function (req, res) {
     subject: "API Key",
     text: code.toString(),
   });
-
-  // var result = sendKey(req.body.toString(), code);
   res.send(info);
 });
 
 //  JSON to CSV
 
 app.post(
-  "/json2csv",
+  "/convert/:conversionType",
   bodyParser.json(),
-  checkApiKey,
-  async function (req, res, next) {
-    if (typeof req.body == "undefined" || req.body == null) {
-      res.json(["error", "No data found"]);
-    } else {
-      let csv = await converter.json2csv(req.body);
-      res.json(["csv", csv]);
-    }
-  }
-);
-
-// CSV to JSON
-
-app.post(
-  "/csvtojson",
   bodyParser.text(),
   checkApiKey,
-  async function (req, res, next) {
-    if (typeof req.body == "undefined" || req.body == null) {
-      res.json(["error", "No data found"]);
-    } else {
-      const json = csvToJson(req.body);
-      res.json(["json", json]);
+  async function (req, res) {
+    const conversionType = req.params.conversionType;
+    const inputData = req.body;
+
+    try {
+      let result;
+
+      if (conversionType === "jsontocsv") {
+        result = await converter.json2csv(inputData);
+      } else if (conversionType === "csvtojson") {
+        result = csvToJson(inputData);
+      } else if (conversionType === "csvtoxml") {
+        result = csvToXml(inputData);
+      } else {
+        res.status(400).json({
+          error:
+            "Invalid conversion type, try: /jsontocsv, /csvtojson, /csvtoxml",
+        });
+        return;
+      }
+
+      res.send(result);
+    } catch (error) {
+      res.status(500).json({ error: "An error occurred during conversion" });
     }
   }
 );
+// app.post(
+//   "/json2csv",
+//   bodyParser.json(),
+//   checkApiKey,
+//   async function (req, res, next) {
+//     if (typeof req.body == "undefined" || req.body == null) {
+//       res.json(["error", "No data found"]);
+//     } else {
+//       let csv = await converter.json2csv(req.body);
+//       res.json(["csv", csv]);
+//     }
+//   }
+// );
 
-// CSV to XML
+// // CSV to JSON
 
-app.post(
-  "/csvtoxml",
-  bodyParser.text(),
-  checkApiKey,
-  function (req, res, next) {
-    if (typeof req.body == "undefined" || req.body == null) {
-      res.json(["error", "No data found"]);
-    } else {
-      const xml = csvToXml(req.body);
-      res.send(xml);
-    }
-  }
-);
+// app.post(
+//   "/csvtojson",
+//   bodyParser.text(),
+//   checkApiKey,
+//   async function (req, res, next) {
+//     if (typeof req.body == "undefined" || req.body == null) {
+//       res.json(["error", "No data found"]);
+//     } else {
+//       const json = csvToJson(req.body);
+//       res.json(["json", json]);
+//     }
+//   }
+// );
+
+// // CSV to XML
+
+// app.post(
+//   "/csvtoxml",
+//   bodyParser.text(),
+//   checkApiKey,
+//   function (req, res, next) {
+//     if (typeof req.body == "undefined" || req.body == null) {
+//       res.json(["error", "No data found"]);
+//     } else {
+//       const xml = csvToXml(req.body);
+//       res.send(xml);
+//     }
+//   }
+// );
 
 app.listen(3000, function () {
   console.log("Server running on http://localhost:3000");
