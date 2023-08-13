@@ -47,6 +47,10 @@ app.post("/webhook", bodyParser.text(), async function (req, res) {
 
 //  JSON to CSV
 
+let nextJobId = 1;
+const jobRequests = {};
+const jobQueue = [];
+
 app.post(
   "/convert/:conversionType",
   bodyParser.json(),
@@ -55,79 +59,137 @@ app.post(
   async function (req, res) {
     const conversionType = req.params.conversionType;
     const inputData = req.body;
+    const jobId = nextJobId++;
 
-    try {
-      let result;
+    jobQueue.push({
+      jobId: jobId,
+      conversionType: conversionType,
+      inputData: inputData,
+    });
 
-      if (conversionType === "jsontocsv") {
-        result = await converter.json2csv(inputData);
-      } else if (conversionType === "csvtojson") {
-        result = csvToJson(inputData);
-      } else if (conversionType === "csvtoxml") {
-        result = csvToXml(inputData);
-      } else {
-        res.status(400).json({
-          error:
-            "Invalid conversion type, try: /jsontocsv, /csvtojson, /csvtoxml",
-        });
-        return;
-      }
-
-      res.send(result);
-    } catch (error) {
-      res.status(500).json({ error: "An error occurred during conversion" });
+    if (jobQueue.length === 1) {
+      // Start processing the queue if it's the first job
+      processJobQueue();
     }
+
+    if (jobRequests.length === 5) {
+      res.send("Limit Exceeded, wait for a minute and try again");
+      sleep(60000);
+      jobQueue = [];
+    }
+
+    res.json({ jobId });
+    // try {
+    //   let result;
+
+    //   if (conversionType === "jsontocsv") {
+    //     result = await converter.json2csv(inputData);
+    //   } else if (conversionType === "csvtojson") {
+    //     result = csvToJson(inputData);
+    //   } else if (conversionType === "csvtoxml") {
+    //     result = csvToXml(inputData);
+    //   } else {
+    //     res.status(400).json({
+    //       error:
+    //         "Invalid conversion type, try: /jsontocsv, /csvtojson, /csvtoxml",
+    //     });
+    //     return;
+    //   }
+
+    //   res.send(result);
+    // } catch (error) {
+    //   res.status(500).json({ error: "An error occurred during conversion" });
+    // }
   }
 );
-// app.post(
-//   "/json2csv",
-//   bodyParser.json(),
-//   checkApiKey,
-//   async function (req, res, next) {
-//     if (typeof req.body == "undefined" || req.body == null) {
-//       res.json(["error", "No data found"]);
-//     } else {
-//       let csv = await converter.json2csv(req.body);
-//       res.json(["csv", csv]);
-//     }
-//   }
-// );
 
-// // CSV to JSON
+app.get("/jobs", checkApiKey, function (req, res) {
+  const jobsList = Object.keys(jobRequests).map((jobId) => {
+    const job = jobRequests[jobId];
+    return {
+      jobId,
+      conversionType: job.conversionType,
+      status: job.status,
+    };
+  });
 
-// app.post(
-//   "/csvtojson",
-//   bodyParser.text(),
-//   checkApiKey,
-//   async function (req, res, next) {
-//     if (typeof req.body == "undefined" || req.body == null) {
-//       res.json(["error", "No data found"]);
-//     } else {
-//       const json = csvToJson(req.body);
-//       res.json(["json", json]);
-//     }
-//   }
-// );
-
-// // CSV to XML
-
-// app.post(
-//   "/csvtoxml",
-//   bodyParser.text(),
-//   checkApiKey,
-//   function (req, res, next) {
-//     if (typeof req.body == "undefined" || req.body == null) {
-//       res.json(["error", "No data found"]);
-//     } else {
-//       const xml = csvToXml(req.body);
-//       res.send(xml);
-//     }
-//   }
-// );
+  res.json(jobsList);
+});
 
 app.listen(3000, function () {
   console.log("Server running on http://localhost:3000");
 });
+
+function processJobQueue() {
+  if (jobQueue.length === 0) {
+    return; // No more jobs in the queue
+  }
+
+  const { jobId, conversionType, inputData } = jobQueue[0];
+
+  // Process the current job
+  processJob(jobId, conversionType, inputData)
+    .then(() => {
+      // Remove the completed job from the queue
+      jobQueue.shift();
+
+      // Process the next job in the queue
+      processJobQueue();
+    })
+    .catch((error) => {
+      console.error(`Error processing job ${jobId}: ${error}`);
+
+      // Continue processing the next job even if an error occurred
+      jobQueue.shift();
+      processJobQueue();
+    });
+}
+
+async function processJob(jobId, conversionType, inputData) {
+  try {
+    let result;
+
+    if (conversionType === "json2csv") {
+      // Introduce a 10-second delay
+      await sleep(10000); // Wait for 10 seconds
+      result = await converter.json2csv(inputData);
+    } else if (conversionType === "csvtojson") {
+      // Introduce a 10-second delay
+      await sleep(10000); // Wait for 10 seconds
+      result = csvToJson(inputData);
+    } else if (conversionType === "csvtoxml") {
+      // Introduce a 10-second delay
+      await sleep(10000); // Wait for 10 seconds
+      result = csvToXml(inputData);
+    } else {
+      throw new Error("Invalid conversion type");
+    }
+
+    // Store job details
+    jobRequests[jobId] = {
+      conversionType,
+      inputData,
+      result,
+      status: "completed",
+    };
+
+    console.log(`Job ${jobId} completed`);
+  } catch (error) {
+    console.error(`Error processing job ${jobId}: ${error}`);
+
+    // Store error details
+    jobRequests[jobId] = {
+      status: "error",
+      error: error.message,
+    };
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
 
 // async function convertCSV(path) {
 //   // let rawdata = fs.readFileSync(path);
